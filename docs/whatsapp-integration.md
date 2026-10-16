@@ -20,61 +20,25 @@ curl -X POST "$DATAIK_URL/api/agent/catatan" \
 
 Balasan: `{ "ok": true, "id": "...", "hasil": {"lokasi":1,"orang":1,"kejadian":0}, "ringkas": "Catatan tersimpan. Data baru: ..." }`
 
-## Menambah tool di levelupaiagent
+## Tool di levelupaiagent
 
-Salin berkas di bawah menjadi `agen-pribadi/lib/tools/dataik.ts`, lalu daftarkan `dataikTools`
-di `lib/tools/index.ts` (`TOOLS = [..., ...dataikTools]`). Tambahkan `DATAIK_URL` dan
-`DATAIK_AGENT_TOKEN` ke `.env.local` agen. `dataik_cari` aman dipakai nomor hanya-baca
-(tambahkan ke `VIEWER_TOOLS` bila perlu); `dataik_catat` menulis data sehingga sebaiknya hanya untuk pemilik.
+Sudah dipasang di `agen-pribadi/lib/tools/dataik.ts` (terdaftar di `lib/tools/index.ts`):
 
-```ts
-import { z } from 'zod';
-import { defineTool } from './types';
+| Tool | Fungsi |
+|---|---|
+| `dataik_search` | Cari/baca lokasi, orang, kejadian, atau catatan di Data IK (`kind`, `q`, `kategori`, `tingkat`, `jenis`, `dari`, `sampai`). |
+| `dataik_add_note` | Simpan catatan teks; otomatis dipilah menjadi lokasi / orang / kejadian. Diblokir untuk tugas terjadwal (mode otomatis). |
 
-const base = () => (process.env.DATAIK_URL || '').replace(/\/$/, '');
-const headers = () => ({ Authorization: `Bearer ${process.env.DATAIK_AGENT_TOKEN}`, 'Content-Type': 'application/json' });
+Keduanya hanya tersedia untuk nomor pemilik (tidak ada di daftar `VIEWER_TOOLS`).
+Isi `.env.local` / environment agen:
 
-export const dataikCatat = defineTool({
-  name: 'dataik_catat',
-  description:
-    'Simpan catatan tambahan ke aplikasi Data IK (lokasi penting, orang penting, atau kejadian menonjol). Teks otomatis dipilah menjadi data terstruktur. Pakai saat pengguna berkata "catat", "tambahkan data", "simpan lokasi/orang/kejadian". Tulis ulang teks pengguna apa adanya, jangan menambah fakta.',
-  jsonSchema: {
-    type: 'object',
-    properties: { teks: { type: 'string', description: 'Isi catatan, apa adanya dari pengguna.' } },
-    required: ['teks'],
-  },
-  schema: z.object({ teks: z.string().min(3).max(8000) }),
-  run: async (i) => {
-    const r = await fetch(`${base()}/api/agent/catatan`, { method: 'POST', headers: headers(), body: JSON.stringify({ teks: i.teks, pengirim: 'whatsapp' }) });
-    return r.json();
-  },
-});
-
-export const dataikCari = defineTool({
-  name: 'dataik_cari',
-  description:
-    'Cari data di aplikasi Data IK. kind=lokasi (alamat tempat penting), orang (pejabat, tokoh agama/masyarakat, RT/RW, ketua LSM), atau kejadian (kejadian menonjol). Hasil `teks` sudah berformat baris siap dikirim.',
-  jsonSchema: {
-    type: 'object',
-    properties: {
-      kind: { type: 'string', enum: ['lokasi', 'orang', 'kejadian'] },
-      q: { type: 'string', description: 'Kata kunci (opsional).' },
-      kategori: { type: 'string', description: 'lokasi: Pendidikan/Kesehatan/...; orang: pejabat|tokoh-agama|tokoh-masyarakat|rt-rw|ketua-lsm (opsional).' },
-      jenis: { type: 'string', description: 'kejadian: kecelakaan|kebakaran|tanah-longsor|penemuan-mayat|kriminalitas|bencana-lain|lainnya (opsional).' },
-      limit: { type: 'number' },
-    },
-    required: ['kind'],
-  },
-  schema: z.object({ kind: z.enum(['lokasi', 'orang', 'kejadian']), q: z.string().optional(), kategori: z.string().optional(), jenis: z.string().optional(), limit: z.number().max(100).optional() }),
-  run: async (i) => {
-    const p = new URLSearchParams(Object.entries(i).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]));
-    const r = await fetch(`${base()}/api/agent/cari?${p}`, { headers: headers() });
-    return r.json();
-  },
-});
-
-export const dataikTools = [dataikCatat, dataikCari];
 ```
+DATAIK_URL=https://<situs-data-ik>.vercel.app
+DATAIK_AGENT_TOKEN=<sama dengan AGENT_TOKEN di Data IK>
+```
+
+Contoh pesan WhatsApp: "catat Ketua RW 05 Kelurahan Sendangmulyo bernama Pak Slamet", "alamat RS Wongsonegoro?",
+"siapa camat Tembalang?", "kejadian kebakaran bulan ini".
 
 ## Catatan keamanan
 
