@@ -65,7 +65,9 @@ export async function ubah(kind: Kind, id: string, body: Body) {
     const arr = db[kind] as Array<Record<string, unknown>>;
     const e = arr.find((x) => x.id === id);
     if (!e) return null;
+    const alamatBerubah = kind === "lokasi" && "alamat" in k && k.alamat !== e.alamat;
     Object.assign(e, k, { manual: true, diubah: now() });
+    if (kind === "lokasi" && (alamatBerubah || body.terverifikasi === true)) delete e.alamat_ai;
     return e;
   });
 }

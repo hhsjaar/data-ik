@@ -104,6 +104,8 @@ export type Lokasi = Dasar & {
   alias: string[];
   kategori: string;
   alamat: string;
+  /** true bila alamat diisi AI dari pengetahuan umum (bukan dari laporan) dan belum diverifikasi */
+  alamat_ai?: boolean;
   kelurahan: string;
   keterangan: string;
   /** tanggal laporan terbaru yang menyebut tempat ini */

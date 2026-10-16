@@ -89,6 +89,8 @@ export default function DataPage({ kind }: { kind: Kind }) {
   const [sampai, setSampai] = useState("");
   const [edit, setEdit] = useState<Partial<Item> | null>(null);
   const [toast, setToast] = useState("");
+  const [lengkapi, setLengkapi] = useState(false);
+  const [statusAlamat, setStatusAlamat] = useState("");
 
   const muat = useCallback(async () => {
     try {
@@ -121,6 +123,12 @@ export default function DataPage({ kind }: { kind: Kind }) {
       if (kat && kategoriDari(kind, it) !== kat) return false;
       if (kind === "orang" && tingkat && (it as Orang).tingkat !== tingkat) return false;
       if (asal && it.asal !== asal) return false;
+      if (kind === "lokasi" && statusAlamat) {
+        const l = it as Lokasi;
+        if (statusAlamat === "ada" && !l.alamat) return false;
+        if (statusAlamat === "kosong" && l.alamat) return false;
+        if (statusAlamat === "ai" && !l.alamat_ai) return false;
+      }
       const t = ((it as unknown as Record<string, string>)[meta.tanggalField] ?? "").slice(0, 10);
       if (dari && t < dari) return false;
       if (sampai && t > sampai) return false;
@@ -142,7 +150,7 @@ export default function DataPage({ kind }: { kind: Kind }) {
             : (a, b) => tg(b).localeCompare(tg(a)),
     );
     return f;
-  }, [all, q, kat, tingkat, asal, sort, dari, sampai, kind, meta.tanggalField]);
+  }, [all, q, kat, tingkat, asal, statusAlamat, sort, dari, sampai, kind, meta.tanggalField]);
 
   async function simpan(it: Partial<Item>) {
     const baru = !it.id;
@@ -180,7 +188,23 @@ export default function DataPage({ kind }: { kind: Kind }) {
     }
   };
 
-  const adaFilter = q || kat || tingkat || asal || dari || sampai;
+  const kosongAlamat = kind === "lokasi" ? (all ?? []).filter((x) => !(x as Lokasi).alamat).length : 0;
+  async function jalankanLengkapi() {
+    if (!confirm(`AI akan mencoba mengisi alamat untuk ${kosongAlamat} lokasi yang kosong. Hanya yang AI yakin yang diisi, dan semuanya ditandai "perlu verifikasi". Lanjut?`)) return;
+    setLengkapi(true);
+    try {
+      const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lengkapiAlamat: true }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Gagal.");
+      info(`${j.terisi} alamat terisi, ${j.dilewati} dilewati${j.galat ? `, ${j.galat} grup gagal` : ""}`);
+      muat();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+    setLengkapi(false);
+  }
+
+  const adaFilter = q || kat || tingkat || asal || statusAlamat || dari || sampai;
   return (
     <>
       <h1>{meta.judul}</h1>
@@ -214,15 +238,28 @@ export default function DataPage({ kind }: { kind: Kind }) {
           <option value="web">Catatan web</option>
           <option value="manual">Input manual</option>
         </select>
+        {kind === "lokasi" && (
+          <select value={statusAlamat} onChange={(e) => setStatusAlamat(e.target.value)} aria-label="Status alamat">
+            <option value="">Semua alamat</option>
+            <option value="ada">Ada alamat</option>
+            <option value="kosong">Belum ada alamat</option>
+            <option value="ai">AI · perlu verifikasi</option>
+          </select>
+        )}
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Urutan">
           {meta.urut.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
         </select>
-        {adaFilter && <button className="btn" onClick={() => { setQ(""); setKat(""); setTingkat(""); setAsal(""); setDari(""); setSampai(""); }}>Reset</button>}
+        {adaFilter && <button className="btn" onClick={() => { setQ(""); setKat(""); setTingkat(""); setAsal(""); setStatusAlamat(""); setDari(""); setSampai(""); }}>Reset</button>}
       </div>
       <div className="toolbar">
         <button className="btn primary" onClick={() => setEdit(kosong(kind, kat))}>+ {meta.tambah}</button>
         <button className="btn" onClick={salin} disabled={!tampil.length}>Salin sebagai teks</button>
         <button className="btn" onClick={unduh} disabled={!tampil.length}>Unduh CSV</button>
+        {kind === "lokasi" && (
+          <button className="btn" disabled={lengkapi} onClick={jalankanLengkapi} title="Isi alamat yang kosong memakai AI; hasilnya ditandai perlu verifikasi">
+            {lengkapi ? "Melengkapi alamat…" : `Lengkapi alamat (AI)${kosongAlamat ? ` · ${kosongAlamat}` : ""}`}
+          </button>
+        )}
         <span className="muted small">{all ? `${tampil.length} dari ${all.length}` : ""}</span>
       </div>
 
@@ -268,7 +305,7 @@ function kolomBody(kind: Kind, it: Item) {
       <>
         <td><div className="t">{l.nama}</div>{l.alias.length > 0 && <div className="alias">{l.alias.join(", ")}</div>}</td>
         <td><span className="badge">{l.kategori}</span></td>
-        <td>{l.alamat || <span className="muted">— belum ada alamat</span>}{l.kelurahan && !l.alamat ? <div className="alias">Kel. {l.kelurahan}</div> : null}</td>
+        <td>{l.alamat || <span className="muted">— belum ada alamat</span>}{l.alamat_ai && <div><span className="badge warn">AI · perlu verifikasi</span></div>}{l.kelurahan && !l.alamat ? <div className="alias">Kel. {l.kelurahan}</div> : null}</td>
         <td className="small muted" style={{ whiteSpace: "nowrap" }}>{tgl(l.terakhir)}<br />{l.sebutan}× disebut</td>
       </>
     );
@@ -347,6 +384,12 @@ function Form({ kind, awal, onClose, onSimpan, onHapus }: { kind: Kind; awal: Pa
             <Teks label="Nama tempat" v={d.nama} set={f("nama")} />
             <div className="row field"><Pilih label="Kategori" v={String(d.kategori)} set={f("kategori")} opsi={META.lokasi.kategori} /><Teks label="Kelurahan" v={d.kelurahan} set={f("kelurahan")} /></div>
             <Teks label="Alamat lengkap" v={d.alamat} set={f("alamat")} area />
+            {(awal as Lokasi).alamat_ai && d.alamat === (awal as Lokasi).alamat && (
+              <p className="small" style={{ marginTop: -6 }}>
+                <span className="badge warn">AI · perlu verifikasi</span> Alamat ini diisi AI, bukan dari laporan. Periksa, lalu{" "}
+                <button type="button" className="btn small" onClick={() => setD((p) => ({ ...p, terverifikasi: true }))}>{d.terverifikasi ? "Ditandai terverifikasi ✓" : "Tandai terverifikasi"}</button>
+              </p>
+            )}
             <Teks label="Nama lain / singkatan (pisahkan koma)" v={d.alias} set={f("alias")} />
             <Teks label="Keterangan" v={d.keterangan} set={f("keterangan")} area />
           </>

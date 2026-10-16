@@ -184,7 +184,10 @@ export function terapkan(db: DbShape, h: HasilEkstraksi, k: Konteks) {
         ada.sumber.push(k.sumberId);
         ada.sebutan++;
       }
-      if (!ada.alamat && alamat) ada.alamat = alamat;
+      if ((!ada.alamat || ada.alamat_ai) && alamat) {
+        ada.alamat = alamat;
+        delete ada.alamat_ai;
+      }
       else if (alamat && ada.alamat && alamat.length > ada.alamat.length + 15 && !ada.manual) ada.alamat = alamat;
       if (!ada.kelurahan) ada.kelurahan = rapi(r.kelurahan, 80);
       if (ada.kategori === "Lainnya") ada.kategori = oneOf(r.kategori, KATEGORI_LOKASI, "Lainnya");
@@ -327,7 +330,11 @@ export function rapikan(db: DbShape) {
     const [menang, kalah] = pilihMenang(dup, l, (x) => x.nama);
     for (const s of kalah.sumber) if (!menang.sumber.includes(s)) menang.sumber.push(s);
     menang.sebutan = menang.sumber.length || menang.sebutan + kalah.sebutan;
-    if (!menang.alamat) menang.alamat = kalah.alamat;
+    if (!menang.alamat || (menang.alamat_ai && kalah.alamat && !kalah.alamat_ai)) {
+      menang.alamat = kalah.alamat;
+      if (kalah.alamat_ai) menang.alamat_ai = true;
+      else delete menang.alamat_ai;
+    }
     if (!menang.kelurahan) menang.kelurahan = kalah.kelurahan;
     if (menang.kategori === "Lainnya") menang.kategori = kalah.kategori;
     for (const a of [kalah.nama, ...kalah.alias]) if (tempatKey(a) !== tempatKey(menang.nama) && !menang.alias.some((x) => tempatKey(x) === tempatKey(a))) menang.alias.push(a);

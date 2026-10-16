@@ -8,8 +8,8 @@ export const labelKejadian = (k: string) => labelOf(JENIS_KEJADIAN, k);
 const titik = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
 
 /** Format baris: "- Alamat <nama> berlokasi di <alamat>" */
-export function barisLokasi(l: Pick<Lokasi, "nama" | "alamat">) {
-  return l.alamat ? `- Alamat ${l.nama} berlokasi di ${titik(l.alamat)}` : `- ${l.nama} (alamat belum tercatat)`;
+export function barisLokasi(l: Pick<Lokasi, "nama" | "alamat" | "alamat_ai">) {
+  return l.alamat ? `- Alamat ${l.nama} berlokasi di ${titik(l.alamat)}${l.alamat_ai ? " (perlu verifikasi)" : ""}` : `- ${l.nama} (alamat belum tercatat)`;
 }
 
 export function barisOrang(o: Orang) {
