@@ -3,6 +3,8 @@ import { tokenAgentValid } from "@/lib/auth";
 import { readDb } from "@/lib/store";
 import { tambahCatatan } from "@/lib/sync";
 
+export const maxDuration = 60;
+
 // Untuk levelupaiagent / WhatsApp. Header: Authorization: Bearer <AGENT_TOKEN>
 export async function POST(req: Request) {
   if (!tokenAgentValid(req)) return NextResponse.json({ error: "Token tidak valid." }, { status: 401 });

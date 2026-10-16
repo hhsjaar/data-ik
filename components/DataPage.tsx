@@ -192,12 +192,19 @@ export default function DataPage({ kind }: { kind: Kind }) {
   async function jalankanLengkapi() {
     if (!confirm(`AI akan mencoba mengisi alamat untuk ${kosongAlamat} lokasi yang kosong. Hanya yang AI yakin yang diisi, dan semuanya ditandai "perlu verifikasi". Lanjut?`)) return;
     setLengkapi(true);
+    let terisi = 0;
+    let dilewati = 0;
     try {
-      const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lengkapiAlamat: true }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Gagal.");
-      info(`${j.terisi} alamat terisi, ${j.dilewati} dilewati${j.galat ? `, ${j.galat} grup gagal` : ""}`);
-      muat();
+      for (let putaran = 0; putaran < 40; putaran++) {
+        const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lengkapiAlamat: true }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "Gagal.");
+        terisi += j.terisi;
+        dilewati += j.dilewati;
+        await muat();
+        if (j.sisa <= 0 || j.diperiksa === 0) break;
+      }
+      info(`${terisi} alamat terisi, ${dilewati} dilewati`);
     } catch (e) {
       alert((e as Error).message);
     }

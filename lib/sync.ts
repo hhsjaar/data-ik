@@ -1,81 +1,58 @@
-import { cabutSumber, ekstrak, rapikan, terapkan } from "./extract";
+import { cabutSumber, ekstrak, rapikan, terapkan, type HasilEkstraksi } from "./extract";
 import { geminiConfigured } from "./gemini";
 import { rapi } from "./normalize";
 import { hashText, loadReports } from "./reports";
 import { mutate, newId, now, readDb } from "./store";
-import { jenisInfo, type Asal, type Catatan } from "./types";
+import { jenisInfo, type Asal, type Catatan, type DbShape, type ReportRow } from "./types";
 
-export type SyncStatus = {
-  berjalan: boolean;
-  mulai: string | null;
-  selesai: string | null;
-  total: number;
-  selesaiCount: number;
-  baru: { lokasi: number; orang: number; kejadian: number };
-  galat: Array<{ id: string; pesan: string }>;
-  galatUmum: string | null;
-};
-
-const g = globalThis as unknown as { __dataikSync?: SyncStatus };
-const status = (g.__dataikSync ??= {
-  berjalan: false,
-  mulai: null,
-  selesai: null,
-  total: 0,
-  selesaiCount: 0,
-  baru: { lokasi: 0, orang: 0, kejadian: 0 },
-  galat: [],
-  galatUmum: null,
-});
-
-export const getSyncStatus = (): SyncStatus => status;
-
-/** Hitung berapa laporan yang belum diproses / berubah sejak diproses. */
-export async function hitungAntrean() {
-  const [rows, db] = await Promise.all([loadReports(), readDb()]);
-  const antre = rows.filter((r) => db.diproses[r.id]?.hash !== hashText(r.content || ""));
-  return { totalLaporan: rows.length, antre: antre.length, sudah: rows.length - antre.length };
-}
+// Sinkronisasi dikerjakan per tahap pendek (cocok untuk fungsi serverless seperti Vercel):
+// satu panggilan memproses beberapa laporan dalam batas waktu, klien memanggil lagi sampai `sisa` = 0.
 
 const PARALEL = 4;
+const ANGGARAN_MS = 35_000;
+const MAKS_PER_PANGGILAN = 24;
+
+const perlu = (db: DbShape, r: ReportRow, gen?: string) => {
+  const d = db.diproses[r.id];
+  return !d || d.hash !== hashText(r.content || "") || (!!gen && d.gen !== gen);
+};
+
+/** Hitung berapa laporan yang belum/berubah sejak diproses. */
+export async function hitungAntrean() {
+  const [rows, db] = await Promise.all([loadReports(), readDb()]);
+  const antre = rows.filter((r) => perlu(db, r)).length;
+  return { totalLaporan: rows.length, antre, sudah: rows.length - antre };
+}
+
+export type LangkahHasil = {
+  diproses: number;
+  baru: { lokasi: number; orang: number; kejadian: number };
+  galat: Array<{ id: string; pesan: string }>;
+  sisa: number;
+  total: number;
+  selesai: boolean;
+};
 
 /**
- * Proses laporan yang belum/berubah di latar belakang. `ulang` memproses
- * semua laporan dari awal (data tangan tetap dipertahankan).
+ * Proses sebagian laporan yang belum diolah. `gen` (opsional) memaksa pemrosesan ulang semua laporan
+ * satu kali per nilai gen (mis. cap waktu dari klien).
  */
-export async function mulaiSync(opts: { ulang?: boolean; batas?: number } = {}) {
-  if (status.berjalan) return status;
-  if (!geminiConfigured()) throw new Error("GEMINI_API_KEY belum diisi di .env.local");
-  const [rows, db] = await Promise.all([loadReports(true), readDb()]);
-  let antre = rows.filter((r) => opts.ulang || db.diproses[r.id]?.hash !== hashText(r.content || ""));
-  antre.sort((a, b) => a.created_at.localeCompare(b.created_at)); // lama -> baru agar jabatan terbaru menang
-  if (opts.batas) antre = antre.slice(0, opts.batas);
+export async function langkahSync(opts: { gen?: string } = {}): Promise<LangkahHasil> {
+  if (!geminiConfigured()) throw new Error("GEMINI_API_KEY belum diisi.");
+  const mulai = Date.now();
+  const [rows, db0] = await Promise.all([loadReports(true), readDb()]);
+  const antre = rows.filter((r) => perlu(db0, r, opts.gen)).sort((a, b) => a.created_at.localeCompare(b.created_at)); // lama -> baru
+  const hasil: LangkahHasil = { diproses: 0, baru: { lokasi: 0, orang: 0, kejadian: 0 }, galat: [], sisa: antre.length, total: rows.length, selesai: false };
 
-  Object.assign(status, {
-    berjalan: true,
-    mulai: now(),
-    selesai: null,
-    total: antre.length,
-    selesaiCount: 0,
-    baru: { lokasi: 0, orang: 0, kejadian: 0 },
-    galat: [],
-    galatUmum: null,
-  });
-
-  void (async () => {
-    // Satu penerapan per laporan, berurutan menurut tanggal; ekstraksi LLM berjalan paralel.
-    const hasil = new Map<number, Awaited<ReturnType<typeof ekstrak>> | Error>();
-    let ptr = 0;
-    let giliran = 0; // indeks berikut yang boleh diterapkan
-
-    const pekerja = async () => {
-      for (;;) {
-        const i = ptr++;
-        if (i >= antre.length) return;
-        const r = antre[i];
+  let i = 0;
+  while (i < antre.length && i < MAKS_PER_PANGGILAN && Date.now() - mulai < ANGGARAN_MS) {
+    const grup = antre.slice(i, i + PARALEL);
+    i += grup.length;
+    const ekstraksi = await Promise.all(
+      grup.map(async (r): Promise<[ReportRow, HasilEkstraksi | Error]> => {
         try {
-          hasil.set(
-            i,
+          return [
+            r,
             await ekstrak({
               teks: r.content || "",
               jenisLaporan: jenisInfo(r.template_type).label,
@@ -83,46 +60,35 @@ export async function mulaiSync(opts: { ulang?: boolean; batas?: number } = {}) 
               tanggal: r.created_at,
               denganKejadian: r.template_type === "laporan-kegiatan",
             }),
-          );
+          ];
         } catch (e) {
-          hasil.set(i, e instanceof Error ? e : new Error(String(e)));
+          return [r, e instanceof Error ? e : new Error(String(e))];
         }
-        // terapkan sesuai urutan
-        while (giliran < antre.length && hasil.has(giliran)) {
-          const idx = giliran++;
-          const rr = antre[idx];
-          const h = hasil.get(idx)!;
-          hasil.delete(idx);
-          if (h instanceof Error) {
-            status.galat.push({ id: rr.id, pesan: h.message.slice(0, 200) });
-          } else {
-            const tambah = await mutate((d) => {
-              cabutSumber(d, rr.id);
-              const t = terapkan(d, h, { sumberId: rr.id, asal: "laporan", tanggal: rr.created_at, manual: false });
-              d.diproses[rr.id] = { at: now(), hash: hashText(rr.content || ""), ...t };
-              return t;
-            });
-            status.baru.lokasi += tambah.lokasi;
-            status.baru.orang += tambah.orang;
-            status.baru.kejadian += tambah.kejadian;
-          }
-          status.selesaiCount++;
+      }),
+    );
+    const berhasil = ekstraksi.filter((x): x is [ReportRow, HasilEkstraksi] => !(x[1] instanceof Error));
+    for (const [r, h] of ekstraksi) if (h instanceof Error) hasil.galat.push({ id: r.id, pesan: h.message.slice(0, 200) });
+    if (berhasil.length) {
+      await mutate((d) => {
+        for (const [r, h] of berhasil) {
+          cabutSumber(d, r.id);
+          const t = terapkan(d, h, { sumberId: r.id, asal: "laporan", tanggal: r.created_at, manual: false });
+          d.diproses[r.id] = { at: now(), hash: hashText(r.content || ""), gen: opts.gen, ...t };
+          hasil.baru.lokasi += t.lokasi;
+          hasil.baru.orang += t.orang;
+          hasil.baru.kejadian += t.kejadian;
         }
-      }
-    };
-
-    try {
-      await Promise.all(Array.from({ length: Math.min(PARALEL, antre.length) }, pekerja));
-    } catch (e) {
-      status.galatUmum = e instanceof Error ? e.message : String(e);
-      await mutate((d) => void rapikan(d));
-    } finally {
-      status.berjalan = false;
-      status.selesai = now();
+      });
+      hasil.diproses += berhasil.length;
     }
-  })();
-
-  return status;
+  }
+  hasil.sisa = Math.max(0, antre.length - hasil.diproses);
+  // Gabungkan duplikat setelah tahap terakhir (atau bila tidak ada lagi yang bisa diproses).
+  if (hasil.sisa === 0 || hasil.diproses === 0) {
+    await mutate((d) => void rapikan(d));
+    hasil.selesai = hasil.sisa === 0;
+  }
+  return hasil;
 }
 
 /** Gabungkan duplikat pada data yang sudah ada. */

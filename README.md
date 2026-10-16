@@ -28,7 +28,7 @@ Buka **Beranda → Sinkronisasi** lalu klik *Proses laporan baru*, atau dari ter
 
 ```bash
 npm run sync               # proses laporan baru / yang berubah
-npm run sync -- --ulang    # proses ulang semuanya
+npm run sync -- --ulang    # proses ulang semuanya (dikerjakan per tahap)
 ```
 
 Laporan baru yang dibuat di pembuat-laporan terbaca otomatis (sumbernya langsung tabel `report_history` di Supabase,
@@ -42,11 +42,13 @@ hanya dibaca) dan diolah pada sinkronisasi berikutnya.
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | Ekstraksi data (default `gemini-3.6-flash`) |
 | `ACCESS_CODE` | Kode masuk web. Kosong = tanpa login (hanya untuk lokal) |
 | `AGENT_TOKEN` | Token Bearer untuk `/api/agent/*` (levelupaiagent) |
+| `DATAIK_SUPABASE_SERVICE_KEY` | Kunci service_role; mengaktifkan penyimpanan Supabase (produksi) |
 
 ## Penyimpanan
 
-Hasil olahan disimpan di `data/dataik.json` (diabaikan git). Cukup untuk satu server/VPS; untuk hosting serverless
-(mis. Vercel) ganti isi `lib/store.ts` dengan database — antarmukanya hanya `readDb()` dan `mutate()`.
+- **Lokal** (default): `data/dataik.json` (diabaikan git).
+- **Produksi / Vercel**: isi `DATAIK_SUPABASE_SERVICE_KEY` → data disimpan di tabel `dataik_*` Supabase
+  ([supabase/schema.sql](supabase/schema.sql)). Langkah lengkap: [docs/deploy-vercel.md](docs/deploy-vercel.md).
 
 ## Keamanan
 

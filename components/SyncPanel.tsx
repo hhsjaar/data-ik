@@ -1,47 +1,65 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { SyncStatus } from "@/lib/sync";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Antrean = { totalLaporan: number; antre: number; sudah: number };
+type Progres = { selesai: number; total: number; baru: { lokasi: number; orang: number; kejadian: number }; galat: number };
 
 export default function SyncPanel() {
-  const [status, setStatus] = useState<SyncStatus | null>(null);
   const [antrean, setAntrean] = useState<Antrean | null>(null);
+  const [progres, setProgres] = useState<Progres | null>(null);
+  const [jalan, setJalan] = useState(false);
+  const [selesai, setSelesai] = useState(false);
   const [err, setErr] = useState("");
+  const henti = useRef(false);
 
   const muat = useCallback(async () => {
     try {
-      const r = await fetch("/api/sync", { cache: "no-store" });
-      const j = await r.json();
+      const j = await (await fetch("/api/sync", { cache: "no-store" })).json();
       if (j.error) setErr(j.error);
-      else setErr("");
-      if (j.status) setStatus(j.status);
-      if (j.antrean) setAntrean(j.antrean);
+      else (setErr(""), setAntrean(j.antrean));
     } catch {
       setErr("Tidak bisa menghubungi server.");
     }
   }, []);
-
   useEffect(() => {
     muat();
   }, [muat]);
-  useEffect(() => {
-    if (!status?.berjalan) return;
-    const t = setInterval(muat, 2500);
-    return () => clearInterval(t);
-  }, [status?.berjalan, muat]);
 
   async function mulai(ulang: boolean) {
     if (ulang && !confirm("Proses ulang SEMUA laporan? Data hasil ekstraksi akan dihitung ulang (data yang Anda ubah sendiri tetap aman).")) return;
     setErr("");
-    const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ulang }) });
-    const j = await r.json();
-    if (j.error) setErr(j.error);
-    await muat();
+    setSelesai(false);
+    setJalan(true);
+    henti.current = false;
+    const gen = ulang ? String(Date.now()) : undefined;
+    const awal = antrean?.antre ?? 0;
+    const total = ulang ? (antrean?.totalLaporan ?? 0) : awal;
+    const p: Progres = { selesai: 0, total, baru: { lokasi: 0, orang: 0, kejadian: 0 }, galat: 0 };
+    setProgres({ ...p });
+    try {
+      for (let putaran = 0; putaran < 200 && !henti.current; putaran++) {
+        const r = await fetch("/api/sync", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gen }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "Gagal.");
+        p.selesai += j.diproses;
+        p.baru.lokasi += j.baru.lokasi;
+        p.baru.orang += j.baru.orang;
+        p.baru.kejadian += j.baru.kejadian;
+        p.galat = j.galat.length;
+        p.total = Math.max(p.total, p.selesai + j.sisa);
+        setProgres({ ...p, baru: { ...p.baru } });
+        if (j.sisa === 0 || j.diproses === 0) break;
+      }
+      setSelesai(true);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setJalan(false);
+    muat();
   }
 
-  const pct = status && status.total ? Math.round((status.selesaiCount / status.total) * 100) : 0;
+  const pct = progres && progres.total ? Math.min(100, Math.round((progres.selesai / progres.total) * 100)) : 0;
   return (
     <div className="panel">
       <h2>Sinkronisasi dari Pembuat Laporan</h2>
@@ -55,28 +73,26 @@ export default function SyncPanel() {
           </>
         )}
       </p>
-      {status?.berjalan && (
+      {progres && (
         <>
           <div className="progress"><div style={{ width: `${pct}%` }} /></div>
-          <p className="small muted" style={{ margin: 0 }}>
-            Memproses {status.selesaiCount}/{status.total} · baru: {status.baru.lokasi} lokasi, {status.baru.orang} orang, {status.baru.kejadian} kejadian
+          <p className={`small ${selesai && !jalan ? "ok" : "muted"}`} style={{ margin: "0 0 8px" }}>
+            {jalan ? "Memproses" : "Selesai"} {progres.selesai}/{progres.total} · baru: {progres.baru.lokasi} lokasi, {progres.baru.orang} orang, {progres.baru.kejadian} kejadian
+            {progres.galat > 0 && <span className="err"> · {progres.galat} gagal (jalankan lagi)</span>}
           </p>
         </>
       )}
-      {!status?.berjalan && status?.selesai && (
-        <p className="small ok" style={{ margin: "0 0 8px" }}>
-          Terakhir selesai: {status.selesaiCount}/{status.total} laporan · baru {status.baru.lokasi} lokasi, {status.baru.orang} orang, {status.baru.kejadian} kejadian
-          {status.galat.length > 0 && <span className="err"> · {status.galat.length} gagal (coba jalankan lagi)</span>}
-        </p>
-      )}
-      {(err || status?.galatUmum) && <p className="err small">{err || status?.galatUmum}</p>}
+      {err && <p className="err small">{err}</p>}
+      <p className="muted small" style={{ margin: "0 0 8px" }}>{jalan ? "Biarkan halaman ini tetap terbuka sampai selesai." : ""}</p>
       <div className="toolbar" style={{ margin: "10px 0 0" }}>
-        <button className="btn primary" disabled={!!status?.berjalan || antrean?.antre === 0} onClick={() => mulai(false)}>
-          {antrean?.antre ? `Proses ${antrean.antre} laporan baru` : "Tidak ada laporan baru"}
+        <button className="btn primary" disabled={jalan || antrean?.antre === 0} onClick={() => mulai(false)}>
+          {jalan ? "Memproses…" : antrean?.antre ? `Proses ${antrean.antre} laporan baru` : "Tidak ada laporan baru"}
         </button>
-        <button className="btn" disabled={!!status?.berjalan} onClick={() => mulai(true)}>
-          Proses ulang semua
-        </button>
+        {jalan ? (
+          <button className="btn" onClick={() => (henti.current = true)}>Hentikan</button>
+        ) : (
+          <button className="btn" onClick={() => mulai(true)}>Proses ulang semua</button>
+        )}
       </div>
     </div>
   );

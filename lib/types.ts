@@ -106,6 +106,8 @@ export type Lokasi = Dasar & {
   alamat: string;
   /** true bila alamat diisi AI dari pengetahuan umum (bukan dari laporan) dan belum diverifikasi */
   alamat_ai?: boolean;
+  /** sudah pernah dicoba dilengkapi AI (agar tidak diulang terus) */
+  alamat_dicek?: boolean;
   kelurahan: string;
   keterangan: string;
   /** tanggal laporan terbaru yang menyebut tempat ini */
@@ -157,5 +159,5 @@ export type DbShape = {
   kejadian: Kejadian[];
   catatan: Catatan[];
   /** laporan yang sudah diproses ekstraksi */
-  diproses: Record<string, { at: string; hash: string; lokasi: number; orang: number; kejadian: number }>;
+  diproses: Record<string, { at: string; hash: string; lokasi: number; orang: number; kejadian: number; gen?: string }>;
 };

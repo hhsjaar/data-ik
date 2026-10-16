@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit",
-    "sync": "node scripts/sync.mjs"
+    "sync": "node scripts/sync.mjs",
+    "migrate": "node scripts/migrate-to-supabase.mjs"
   },
   "dependencies": {
     "next": "16.2.10",
