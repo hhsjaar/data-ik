@@ -7,7 +7,7 @@ import type { DbShape } from "./types";
 //  - Berkas    : data/dataik.json (pengembangan lokal / satu server).
 const FILE = path.join(process.cwd(), "data", "dataik.json");
 
-const kosong = (): DbShape => ({ lokasi: [], orang: [], kejadian: [], catatan: [], diproses: {} });
+const kosong = (): DbShape => ({ lokasi: [], orang: [], kejadian: [], catatan: [], personil: [], diproses: {} });
 
 export function storeMode(): "supabase" | "berkas" {
   return process.env.DATAIK_SUPABASE_SERVICE_KEY ? "supabase" : "berkas";
@@ -45,6 +45,7 @@ const TABEL = {
   orang: "dataik_orang",
   kejadian: "dataik_kejadian",
   catatan: "dataik_catatan",
+  personil: "dataik_personil",
   diproses: "dataik_diproses",
 } as const;
 type Koleksi = keyof typeof TABEL;
@@ -68,12 +69,19 @@ async function rest(tabel: string, query: string, init: RequestInit = {}) {
   return res;
 }
 
-async function ambilSemua(tabel: string): Promise<Baris[]> {
+async function ambilSemua(tabel: string, opsional = false): Promise<Baris[]> {
   const out: Baris[] = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
-    const r = await rest(tabel, "?select=id,data&order=id", { headers: { Range: `${from}-${from + PAGE - 1}` } });
-    const rows: Baris[] = await r.json();
+    let rows: Baris[];
+    try {
+      const r = await rest(tabel, "?select=id,data&order=id", { headers: { Range: `${from}-${from + PAGE - 1}` } });
+      rows = await r.json();
+    } catch (e) {
+      // Tabel opsional yang belum dibuat dianggap kosong agar bagian lain aplikasi tetap jalan.
+      if (opsional && /tabel belum dibuat|relation|schema cache|404/i.test((e as Error).message)) return [];
+      throw e;
+    }
     out.push(...rows);
     if (rows.length < PAGE) break;
   }
@@ -81,12 +89,13 @@ async function ambilSemua(tabel: string): Promise<Baris[]> {
 }
 
 async function loadRemote(): Promise<DbShape> {
-  const [lokasi, orang, kejadian, catatan, diproses] = await Promise.all((Object.keys(TABEL) as Koleksi[]).map((k) => ambilSemua(TABEL[k])));
+  const [lokasi, orang, kejadian, catatan, personil, diproses] = await Promise.all((Object.keys(TABEL) as Koleksi[]).map((k) => ambilSemua(TABEL[k], k === "personil")));
   const db = kosong();
   db.lokasi = lokasi.map((r) => r.data) as DbShape["lokasi"];
   db.orang = orang.map((r) => r.data) as DbShape["orang"];
   db.kejadian = kejadian.map((r) => r.data) as DbShape["kejadian"];
   db.catatan = (catatan.map((r) => r.data) as DbShape["catatan"]).sort((a, b) => b.dibuat.localeCompare(a.dibuat));
+  db.personil = (personil.map((r) => r.data) as DbShape["personil"]).sort((a, b) => a.no - b.no);
   db.diproses = Object.fromEntries(diproses.map((r) => [r.id, r.data])) as DbShape["diproses"];
   return db;
 }
@@ -99,6 +108,7 @@ function potret(db: DbShape): Record<Koleksi, Map<string, string>> {
     orang: m(db.orang),
     kejadian: m(db.kejadian),
     catatan: m(db.catatan),
+    personil: m(db.personil),
     diproses: new Map(Object.entries(db.diproses).map(([id, v]) => [id, JSON.stringify(v)])),
   };
 }

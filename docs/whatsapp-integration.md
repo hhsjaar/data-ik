@@ -26,7 +26,7 @@ Sudah dipasang di `agen-pribadi/lib/tools/dataik.ts` (terdaftar di `lib/tools/in
 
 | Tool | Fungsi |
 |---|---|
-| `dataik_search` | Cari/baca lokasi, orang, kejadian, atau catatan di Data IK (`kind`, `q`, `kategori`, `tingkat`, `jenis`, `dari`, `sampai`). |
+| `dataik_search` | Cari/baca lokasi, orang, kejadian, personil (daftar nominatif Polsek), atau catatan di Data IK (`kind`, `q`, `kategori`, `tingkat`, `jenis`, `dari`, `sampai`). |
 | `dataik_add_note` | Simpan catatan teks; otomatis dipilah menjadi lokasi / orang / kejadian. Diblokir untuk tugas terjadwal (mode otomatis). |
 
 Keduanya hanya tersedia untuk nomor pemilik (tidak ada di daftar `VIEWER_TOOLS`).

@@ -119,3 +119,35 @@ export async function tambahCatatan(teks: string, opts: { pengirim?: string; asa
   }
   return catatan;
 }
+
+/**
+ * Impor daftar personil dari Excel. Dicocokkan berdasarkan NRP/NIP (atau nama bila NRP kosong):
+ * yang ada diperbarui (kecuali yang pernah diubah tangan), yang baru ditambah, dan baris asal Excel yang
+ * tidak ada lagi di file dihapus (mis. personil dimutasi). Baris input manual tidak disentuh.
+ */
+export async function imporPersonil(baris: import("./excel-personil").BarisPersonil[]) {
+  return mutate((d) => {
+    const waktu = now();
+    const kunci = (x: { nrp: string; nama: string }) => (x.nrp ? `n:${x.nrp}` : `m:${x.nama.toLowerCase()}`);
+    const adaDiFile = new Set(baris.map(kunci));
+    const peta = new Map(d.personil.filter((p) => p.asal === "excel").map((p) => [kunci(p), p]));
+    let baru = 0;
+    let diperbarui = 0;
+    for (const b of baris) {
+      const ada = peta.get(kunci(b));
+      if (ada) {
+        ada.no = b.no;
+        if (!ada.manual) Object.assign(ada, { nama: b.nama, pangkat: b.pangkat, nrp: b.nrp, jabatan: b.jabatan, unit: b.unit, status: b.status, keterangan: b.keterangan });
+        ada.diubah = waktu;
+        diperbarui++;
+      } else {
+        d.personil.push({ id: newId(), ...b, asal: "excel", dibuat: waktu, diubah: waktu });
+        baru++;
+      }
+    }
+    const sebelum = d.personil.length;
+    d.personil = d.personil.filter((p) => p.asal !== "excel" || p.manual || adaDiFile.has(kunci(p)));
+    d.personil.sort((a, b) => a.no - b.no);
+    return { total: baris.length, baru, diperbarui, dihapus: sebelum - d.personil.length };
+  });
+}

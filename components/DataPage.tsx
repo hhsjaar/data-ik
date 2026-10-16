@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { barisKejadian, barisLokasi, barisOrang, labelKejadian, labelOrang, labelTingkat } from "@/lib/format";
+import { barisKejadian, barisLokasi, barisOrang, barisPersonil, labelKejadian, labelOrang, labelTingkat } from "@/lib/format";
+import { UNIT_PERSONIL, rankPangkat } from "@/lib/personil";
 import {
   JENIS_KEJADIAN,
   KATEGORI_LOKASI,
@@ -12,9 +13,10 @@ import {
   type Kind,
   type Lokasi,
   type Orang,
+  type Personil,
 } from "@/lib/types";
 
-type Item = Lokasi | Orang | Kejadian;
+type Item = Lokasi | Orang | Kejadian | Personil;
 type Opsi = { key: string; label: string };
 
 const tgl = (iso: string) => (iso ? new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "");
@@ -38,6 +40,15 @@ const META: Record<Kind, { judul: string; sub: string; tambah: string; cari: str
     urut: [{ key: "baru", label: "Terakhir disebut" }, { key: "nama", label: "Nama A–Z" }, { key: "sering", label: "Paling sering disebut" }],
     tanggalField: "terakhir",
   },
+  personil: {
+    judul: "Data Personil Tembalang",
+    sub: "Daftar nominatif personel Polsek Tembalang (diimpor dari Excel). Data sensitif: jangan dibagikan di luar kebutuhan dinas.",
+    tambah: "Tambah personil",
+    cari: "Cari nama, NRP/NIP, pangkat, jabatan…",
+    kategori: UNIT_PERSONIL.map((k) => ({ key: k, label: k })),
+    urut: [{ key: "no", label: "Nomor urut daftar" }, { key: "nama", label: "Nama A–Z" }, { key: "pangkat", label: "Pangkat tertinggi" }],
+    tanggalField: "tanggal",
+  },
   kejadian: {
     judul: "Kejadian Menonjol",
     sub: "Kecelakaan, kebakaran, tanah longsor, penemuan mayat, kriminalitas, dan lainnya dari Laporan Kegiatan.",
@@ -49,7 +60,7 @@ const META: Record<Kind, { judul: string; sub: string; tambah: string; cari: str
   },
 };
 
-const kategoriDari = (kind: Kind, it: Item) => (kind === "kejadian" ? (it as Kejadian).jenis : (it as Lokasi | Orang).kategori);
+const kategoriDari = (kind: Kind, it: Item) => (kind === "kejadian" ? (it as Kejadian).jenis : kind === "personil" ? (it as Personil).unit : (it as Lokasi | Orang).kategori);
 
 function teksCari(it: Item) {
   const { sumber: _s, id: _i, ...r } = it as Item & { sumber: string[] };
@@ -62,7 +73,7 @@ function teksCari(it: Item) {
 }
 
 function baris(kind: Kind, it: Item) {
-  return kind === "lokasi" ? barisLokasi(it as Lokasi) : kind === "orang" ? barisOrang(it as Orang) : barisKejadian(it as Kejadian);
+  return kind === "lokasi" ? barisLokasi(it as Lokasi) : kind === "orang" ? barisOrang(it as Orang) : kind === "personil" ? barisPersonil(it as Personil) : barisKejadian(it as Kejadian);
 }
 
 function csv(kind: Kind, items: Item[]) {
@@ -71,7 +82,9 @@ function csv(kind: Kind, items: Item[]) {
       ? ["nama", "kategori", "alamat", "kelurahan", "alias", "terakhir", "sebutan"]
       : kind === "orang"
         ? ["nama", "kategori", "tingkat", "jabatan", "instansi", "wilayah", "rt", "rw", "terakhir", "sebutan"]
-        : ["tanggal", "waktu", "jenis", "judul", "lokasi", "uraian", "akibat", "tindak_lanjut"];
+        : kind === "personil"
+          ? ["no", "nama", "pangkat", "nrp", "status", "jabatan", "unit", "keterangan"]
+          : ["tanggal", "waktu", "jenis", "judul", "lokasi", "uraian", "akibat", "tindak_lanjut"];
   const esc = (v: unknown) => `"${String(Array.isArray(v) ? v.join("; ") : (v ?? "")).replace(/"/g, '""')}"`;
   return "﻿" + [kol.join(","), ...items.map((it) => kol.map((k) => esc((it as unknown as Record<string, unknown>)[k])).join(","))].join("\r\n");
 }
@@ -84,13 +97,15 @@ export default function DataPage({ kind }: { kind: Kind }) {
   const [kat, setKat] = useState("");
   const [tingkat, setTingkat] = useState("");
   const [asal, setAsal] = useState("");
-  const [sort, setSort] = useState("baru");
+  const [sort, setSort] = useState(kind === "personil" ? "no" : "baru");
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [edit, setEdit] = useState<Partial<Item> | null>(null);
   const [toast, setToast] = useState("");
   const [lengkapi, setLengkapi] = useState(false);
   const [statusAlamat, setStatusAlamat] = useState("");
+  const [pangkat, setPangkat] = useState("");
+  const [mengimpor, setMengimpor] = useState(false);
 
   const muat = useCallback(async () => {
     try {
@@ -129,19 +144,26 @@ export default function DataPage({ kind }: { kind: Kind }) {
         if (statusAlamat === "kosong" && l.alamat) return false;
         if (statusAlamat === "ai" && !l.alamat_ai) return false;
       }
-      const t = ((it as unknown as Record<string, string>)[meta.tanggalField] ?? "").slice(0, 10);
-      if (dari && t < dari) return false;
-      if (sampai && t > sampai) return false;
+      if (kind !== "personil") {
+        const t = ((it as unknown as Record<string, string>)[meta.tanggalField] ?? "").slice(0, 10);
+        if (dari && t < dari) return false;
+        if (sampai && t > sampai) return false;
+      }
+      if (kind === "personil" && pangkat && !(it as Personil).pangkat.toUpperCase().startsWith(pangkat)) return false;
       if (kata.length) {
         const h = teksCari(it);
         return kata.every((w) => h.includes(w));
       }
       return true;
     });
-    const nama = (it: Item) => ("nama" in it ? it.nama : it.judul);
+    const nama = (it: Item) => ("nama" in it ? it.nama : (it as Kejadian).judul);
     const tg = (it: Item) => (it as unknown as Record<string, string>)[meta.tanggalField] ?? "";
     f.sort(
-      sort === "nama"
+      kind === "personil" && sort === "no"
+        ? (a, b) => (a as Personil).no - (b as Personil).no
+        : kind === "personil" && sort === "pangkat"
+          ? (a, b) => rankPangkat((a as Personil).pangkat) - rankPangkat((b as Personil).pangkat) || nama(a).localeCompare(nama(b), "id")
+          : sort === "nama"
         ? (a, b) => nama(a).localeCompare(nama(b), "id")
         : sort === "sering"
           ? (a, b) => ((b as Lokasi).sebutan ?? 0) - ((a as Lokasi).sebutan ?? 0)
@@ -150,7 +172,7 @@ export default function DataPage({ kind }: { kind: Kind }) {
             : (a, b) => tg(b).localeCompare(tg(a)),
     );
     return f;
-  }, [all, q, kat, tingkat, asal, statusAlamat, sort, dari, sampai, kind, meta.tanggalField]);
+  }, [all, q, kat, tingkat, asal, statusAlamat, pangkat, sort, dari, sampai, kind, meta.tanggalField]);
 
   async function simpan(it: Partial<Item>) {
     const baru = !it.id;
@@ -188,6 +210,27 @@ export default function DataPage({ kind }: { kind: Kind }) {
     }
   };
 
+  const pangkatAda = useMemo(
+    () => (kind === "personil" ? [...new Set((all as Personil[] | null)?.map((x) => x.pangkat.split(" ")[0].toUpperCase()).filter(Boolean))].sort((a, b) => rankPangkat(a) - rankPangkat(b)) : []),
+    [all, kind],
+  );
+  async function impor(file: File) {
+    if (!confirm(`Impor "${file.name}"? Personil yang sudah ada diperbarui berdasarkan NRP/NIP, yang baru ditambah, dan yang tidak ada lagi di file dihapus (data yang Anda ubah sendiri tidak ditimpa).`)) return;
+    setMengimpor(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/personil/impor", { method: "POST", body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Gagal mengimpor.");
+      info(`${j.total} baris: ${j.baru} baru, ${j.diperbarui} diperbarui, ${j.dihapus} dihapus`);
+      muat();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+    setMengimpor(false);
+  }
+
   const kosongAlamat = kind === "lokasi" ? (all ?? []).filter((x) => !(x as Lokasi).alamat).length : 0;
   async function jalankanLengkapi() {
     if (!confirm(`AI akan mencoba mengisi alamat untuk ${kosongAlamat} lokasi yang kosong. Hanya yang AI yakin yang diisi, dan semuanya ditandai "perlu verifikasi". Lanjut?`)) return;
@@ -211,7 +254,7 @@ export default function DataPage({ kind }: { kind: Kind }) {
     setLengkapi(false);
   }
 
-  const adaFilter = q || kat || tingkat || asal || statusAlamat || dari || sampai;
+  const adaFilter = q || kat || tingkat || asal || statusAlamat || pangkat || dari || sampai;
   return (
     <>
       <h1>{meta.judul}</h1>
@@ -236,11 +279,17 @@ export default function DataPage({ kind }: { kind: Kind }) {
 
       <div className="toolbar">
         <input type="search" className="search" placeholder={meta.cari} value={q} onChange={(e) => setQ(e.target.value)} />
-        <input type="date" value={dari} onChange={(e) => setDari(e.target.value)} aria-label="Dari tanggal" />
-        <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} aria-label="Sampai tanggal" />
+        {kind !== "personil" && <input type="date" value={dari} onChange={(e) => setDari(e.target.value)} aria-label="Dari tanggal" />}
+        {kind !== "personil" && <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} aria-label="Sampai tanggal" />}
+        {kind === "personil" && (
+          <select value={pangkat} onChange={(e) => setPangkat(e.target.value)} aria-label="Pangkat">
+            <option value="">Semua pangkat</option>
+            {pangkatAda.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
         <select value={asal} onChange={(e) => setAsal(e.target.value)} aria-label="Asal data">
           <option value="">Semua asal</option>
-          <option value="laporan">Dari laporan</option>
+          {kind === "personil" ? <option value="excel">Dari Excel</option> : <option value="laporan">Dari laporan</option>}
           <option value="whatsapp">Dari WhatsApp</option>
           <option value="web">Catatan web</option>
           <option value="manual">Input manual</option>
@@ -256,12 +305,18 @@ export default function DataPage({ kind }: { kind: Kind }) {
         <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Urutan">
           {meta.urut.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
         </select>
-        {adaFilter && <button className="btn" onClick={() => { setQ(""); setKat(""); setTingkat(""); setAsal(""); setStatusAlamat(""); setDari(""); setSampai(""); }}>Reset</button>}
+        {adaFilter && <button className="btn" onClick={() => { setQ(""); setKat(""); setTingkat(""); setAsal(""); setStatusAlamat(""); setPangkat(""); setDari(""); setSampai(""); }}>Reset</button>}
       </div>
       <div className="toolbar">
         <button className="btn primary" onClick={() => setEdit(kosong(kind, kat))}>+ {meta.tambah}</button>
         <button className="btn" onClick={salin} disabled={!tampil.length}>Salin sebagai teks</button>
         <button className="btn" onClick={unduh} disabled={!tampil.length}>Unduh CSV</button>
+        {kind === "personil" && (
+          <label className={`btn${mengimpor ? " disabled" : ""}`} style={{ cursor: "pointer" }}>
+            {mengimpor ? "Mengimpor…" : "Impor Excel"}
+            <input type="file" accept=".xls,.xlsx" hidden disabled={mengimpor} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) impor(f); }} />
+          </label>
+        )}
         {kind === "lokasi" && (
           <button className="btn" disabled={lengkapi} onClick={jalankanLengkapi} title="Isi alamat yang kosong memakai AI; hasilnya ditandai perlu verifikasi">
             {lengkapi ? "Melengkapi alamat…" : `Lengkapi alamat (AI)${kosongAlamat ? ` · ${kosongAlamat}` : ""}`}
@@ -295,17 +350,31 @@ export default function DataPage({ kind }: { kind: Kind }) {
 }
 
 function kosong(kind: Kind, kat: string): Partial<Item> {
+  if (kind === "personil") return { nama: "", pangkat: "", nrp: "", jabatan: "", unit: kat || "Lainnya", keterangan: "" } as Partial<Personil>;
   if (kind === "lokasi") return { nama: "", kategori: kat || "Lainnya", alamat: "", kelurahan: "", keterangan: "", alias: [] } as Partial<Lokasi>;
   if (kind === "orang") return { nama: "", kategori: (kat || "tokoh-masyarakat") as Orang["kategori"], tingkat: "", jabatan: "", instansi: "", wilayah: "", rt: "", rw: "", keterangan: "" };
   return { jenis: (kat || "lainnya") as Kejadian["jenis"], judul: "", tanggal: new Date().toISOString().slice(0, 10), waktu: "", lokasi: "", uraian: "", akibat: "", tindak_lanjut: "" };
 }
 
 function kolomHead(kind: Kind) {
-  const h = kind === "lokasi" ? ["Nama", "Kategori", "Alamat", "Terakhir"] : kind === "orang" ? ["Nama", "Kategori", "Jabatan", "Wilayah / instansi", "Terakhir"] : ["Tanggal", "Jenis", "Kejadian", "Akibat"];
+  const h = kind === "personil" ? ["No", "Nama", "Pangkat", "NRP / NIP", "Jabatan", "Unit"] : kind === "lokasi" ? ["Nama", "Kategori", "Alamat", "Terakhir"] : kind === "orang" ? ["Nama", "Kategori", "Jabatan", "Wilayah / instansi", "Terakhir"] : ["Tanggal", "Jenis", "Kejadian", "Akibat"];
   return <tr>{h.map((x) => <th key={x}>{x}</th>)}</tr>;
 }
 
 function kolomBody(kind: Kind, it: Item) {
+  if (kind === "personil") {
+    const p = it as Personil;
+    return (
+      <>
+        <td className="small muted">{p.no}</td>
+        <td><div className="t">{p.nama}</div>{p.keterangan && <div className="alias">{p.keterangan}</div>}</td>
+        <td>{p.pangkat}</td>
+        <td className="small" style={{ whiteSpace: "nowrap" }}>{p.nrp}<div className="alias">{p.status}</div></td>
+        <td>{p.jabatan}</td>
+        <td><span className="badge">{p.unit}</span></td>
+      </>
+    );
+  }
   if (kind === "lokasi") {
     const l = it as Lokasi;
     return (
@@ -411,6 +480,15 @@ function Form({ kind, awal, onClose, onSimpan, onHapus }: { kind: Kind; awal: Pa
             <Teks label="Jabatan" v={d.jabatan} set={f("jabatan")} />
             <div className="row field"><Teks label="Instansi / organisasi" v={d.instansi} set={f("instansi")} /><Teks label="Wilayah / kelurahan" v={d.wilayah} set={f("wilayah")} /></div>
             {d.kategori === "rt-rw" && <div className="row field"><Teks label="RT" v={d.rt} set={f("rt")} /><Teks label="RW" v={d.rw} set={f("rw")} /></div>}
+            <Teks label="Keterangan" v={d.keterangan} set={f("keterangan")} area />
+          </>
+        )}
+        {kind === "personil" && (
+          <>
+            <Teks label="Nama" v={d.nama} set={f("nama")} />
+            <div className="row field"><Teks label="Pangkat" v={d.pangkat} set={f("pangkat")} /><Teks label="NRP / NIP" v={d.nrp} set={f("nrp")} /></div>
+            <Teks label="Jabatan" v={d.jabatan} set={f("jabatan")} />
+            <Pilih label="Unit" v={String(d.unit || "Lainnya")} set={f("unit")} opsi={META.personil.kategori} />
             <Teks label="Keterangan" v={d.keterangan} set={f("keterangan")} area />
           </>
         )}

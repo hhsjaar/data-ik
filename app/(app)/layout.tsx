@@ -20,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/lokasi", label: "Lokasi Penting", n: db.lokasi.length },
     { href: "/orang", label: "Orang Penting", n: db.orang.length },
     { href: "/kejadian", label: "Kejadian Menonjol", n: db.kejadian.length },
+    { href: "/personil", label: "Data Personil Tembalang", n: db.personil.length },
     { href: "/catatan", label: "Catatan WhatsApp", n: db.catatan.length },
   ];
   const jenis = [

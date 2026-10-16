@@ -1,5 +1,6 @@
 import { readDb } from "./store";
-import type { Kejadian, Kind, Lokasi, Orang } from "./types";
+import { rankPangkat } from "./personil";
+import type { Kejadian, Kind, Lokasi, Orang, Personil } from "./types";
 
 export type Param = {
   q?: string;
@@ -15,6 +16,7 @@ export type Param = {
 
 const teksLokasi = (l: Lokasi) => [l.nama, ...l.alias, l.kategori, l.alamat, l.kelurahan, l.keterangan].join(" ");
 const teksOrang = (o: Orang) => [o.nama, o.jabatan, o.instansi, o.wilayah, o.keterangan, o.rt && `rt ${o.rt}`, o.rw && `rw ${o.rw}`].join(" ");
+const teksPersonil = (p: Personil) => [p.nama, p.pangkat, p.nrp, p.jabatan, p.unit, p.status, p.keterangan].join(" ");
 const teksKejadian = (e: Kejadian) => [e.judul, e.jenis.replace("-", " "), e.lokasi, e.uraian, e.akibat, e.tindak_lanjut].join(" ");
 
 function cocokQ(teks: string, q?: string) {
@@ -32,7 +34,7 @@ const dalamTanggal = (tgl: string, dari?: string, sampai?: string) =>
 
 export async function cariData(kind: Kind, p: Param) {
   const db = await readDb();
-  let hasil: Array<Lokasi | Orang | Kejadian>;
+  let hasil: Array<Lokasi | Orang | Kejadian | Personil>;
   if (kind === "lokasi") {
     hasil = db.lokasi
       .filter((l) => cocokQ(teksLokasi(l), p.q) && (!p.kategori || l.kategori === p.kategori) && (!p.asal || l.asal === p.asal) && dalamTanggal(l.terakhir, p.dari, p.sampai))
@@ -55,6 +57,16 @@ export async function cariData(kind: Kind, p: Param) {
           : p.sort === "sering"
             ? (a, b) => b.sebutan - a.sebutan
             : (a, b) => b.terakhir.localeCompare(a.terakhir),
+      );
+  } else if (kind === "personil") {
+    hasil = db.personil
+      .filter((x) => cocokQ(teksPersonil(x), p.q) && (!p.kategori || x.unit === p.kategori) && (!p.tingkat || x.pangkat.toUpperCase().startsWith(p.tingkat.toUpperCase())) && (!p.asal || x.asal === p.asal))
+      .sort(
+        p.sort === "nama"
+          ? (a, b) => a.nama.localeCompare(b.nama, "id")
+          : p.sort === "pangkat"
+            ? (a, b) => rankPangkat(a.pangkat) - rankPangkat(b.pangkat) || a.nama.localeCompare(b.nama, "id")
+            : (a, b) => a.no - b.no,
       );
   } else {
     hasil = db.kejadian

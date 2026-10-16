@@ -16,3 +16,8 @@ alter table public.dataik_catatan  enable row level security;
 alter table public.dataik_diproses enable row level security;
 
 revoke all on public.dataik_lokasi, public.dataik_orang, public.dataik_kejadian, public.dataik_catatan, public.dataik_diproses from anon, authenticated;
+
+-- Data Personil Tembalang (ditambahkan belakangan; aman dijalankan ulang)
+create table if not exists public.dataik_personil (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+alter table public.dataik_personil enable row level security;
+revoke all on public.dataik_personil from anon, authenticated;

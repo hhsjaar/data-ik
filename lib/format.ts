@@ -1,4 +1,4 @@
-import { JENIS_KEJADIAN, KATEGORI_ORANG, TINGKAT_PEJABAT, type Kejadian, type Lokasi, type Orang } from "./types";
+import { JENIS_KEJADIAN, KATEGORI_ORANG, TINGKAT_PEJABAT, type Kejadian, type Lokasi, type Orang, type Personil } from "./types";
 
 const labelOf = (arr: readonly { key: string; label: string }[], key: string) => arr.find((a) => a.key === key)?.label ?? key;
 export const labelOrang = (k: string) => labelOf(KATEGORI_ORANG, k);
@@ -22,4 +22,9 @@ export function barisOrang(o: Orang) {
 export function barisKejadian(e: Kejadian) {
   const tgl = e.tanggal ? new Date(`${e.tanggal}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "";
   return `- ${labelKejadian(e.jenis)}${tgl ? `, ${tgl}` : ""}${e.waktu ? ` pukul ${e.waktu}` : ""}${e.lokasi ? ` di ${e.lokasi}` : ""}: ${e.uraian}${e.akibat ? ` Akibat: ${titik(e.akibat)}` : ""}`;
+}
+
+export function barisPersonil(p: Personil) {
+  const nomor = p.nrp ? ` ${p.status === "PNS" ? "NIP" : "NRP"} ${p.nrp}` : "";
+  return `- ${[p.pangkat, p.nama].filter(Boolean).join(" ")}${nomor}${p.jabatan ? `, ${p.jabatan}` : ""}`;
 }

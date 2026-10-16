@@ -141,6 +141,27 @@ export type Kejadian = Dasar & {
   tindak_lanjut: string;
 };
 
+export type Personil = {
+  id: string;
+  /** nomor urut pada daftar nominatif */
+  no: number;
+  nama: string;
+  pangkat: string;
+  /** NRP (Polri) atau NIP (PNS) */
+  nrp: string;
+  jabatan: string;
+  /** unit kerja, diturunkan dari jabatan */
+  unit: string;
+  /** Polri / PNS */
+  status: string;
+  keterangan: string;
+  asal: "excel" | "manual";
+  /** true bila diubah tangan: tidak ditimpa saat impor ulang */
+  manual?: boolean;
+  dibuat: string;
+  diubah: string;
+};
+
 export type Catatan = {
   id: string;
   teks: string;
@@ -151,13 +172,14 @@ export type Catatan = {
   galat?: string;
 };
 
-export type Kind = "lokasi" | "orang" | "kejadian";
+export type Kind = "lokasi" | "orang" | "kejadian" | "personil";
 
 export type DbShape = {
   lokasi: Lokasi[];
   orang: Orang[];
   kejadian: Kejadian[];
   catatan: Catatan[];
+  personil: Personil[];
   /** laporan yang sudah diproses ekstraksi */
   diproses: Record<string, { at: string; hash: string; lokasi: number; orang: number; kejadian: number; gen?: string }>;
 };
