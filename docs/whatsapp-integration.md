@@ -40,6 +40,42 @@ DATAIK_AGENT_TOKEN=<sama dengan AGENT_TOKEN di Data IK>
 Contoh pesan WhatsApp: "catat Ketua RW 05 Kelurahan Sendangmulyo bernama Pak Slamet", "alamat RS Wongsonegoro?",
 "siapa camat Tembalang?", "kejadian kebakaran bulan ini".
 
+## Koreksi data & keputusan (interaktif)
+
+Data IK mendeteksi tiga hal yang perlu diputuskan pengguna (menu **Perlu Dipilih** di web, atau lewat WhatsApp):
+
+| Jenis | Contoh | Pilihan |
+|---|---|---|
+| `alamat` | Satu tempat punya dua alamat berbeda | pilih salah satu, atau ketik alamat yang benar (`baru`) |
+| `nama-mirip` | "Budiman Sujatmiko" / "Budiman Sudjatmiko" | gabung (pakai nama A atau B) atau bukan orang yang sama |
+| `jabatan-ganda` | Dua nama untuk "Camat Tembalang" | pilih yang benar (yang lain jadi "Mantan ...") atau semuanya benar |
+
+Jawaban pengguna ditandai **terverifikasi** dan menjadi acuan; yang ditolak tidak ditanyakan lagi.
+
+Tool tambahan di levelupaiagent: `dataik_create_entry`, `dataik_update_entry`, `dataik_delete_entry` (butuh persetujuan YA/TIDAK),
+`dataik_list_conflicts`, `dataik_resolve_conflict`. Agen menanyakan konflik satu per satu memakai `ask_user`
+(daftar bernomor di WhatsApp). Setelah `dataik_add_note`, konflik yang muncul karena catatan itu ikut dikembalikan
+agar langsung ditanyakan.
+
+Endpoint (semua `Authorization: Bearer <AGENT_TOKEN>`):
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/agent/konflik?limit=` | Daftar konflik + pilihan |
+| `POST /api/agent/konflik` `{id, kode, teks?}` | Putuskan satu konflik |
+| `POST /api/agent/data/{kind}` | Tambah data (`lokasi`, `orang`, `kejadian`, `personil`) |
+| `PATCH /api/agent/data/{kind}/{id}` | Ubah kolom tertentu (`terverifikasi: true` = dibenarkan) |
+| `DELETE /api/agent/data/{kind}/{id}` | Hapus |
+
+## Acuan untuk aplikasi lain (pembuat-laporan, laporan-awal)
+
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/agent/saran?kind=lokasi\|orang\|personil&q=...&limit=8` | Rekomendasi isian kolom (autocomplete). Hasil: `[{nilai, detail, terverifikasi, id}]`, awalan kata dan data terverifikasi lebih dulu. |
+| `POST /api/agent/acuan` `{teks, hanyaTerverifikasi?}` | Cari nama tempat/orang yang disebut di teks → penulisan baku, alamat/jabatan. `ejaanBeda: true` bila teks memakai ejaan lain. `teks` = baris siap pakai. |
+
+Panggil dari **server** aplikasi lain (jangan dari browser) supaya token tidak bocor; browser memanggil rute proxy milik aplikasi itu.
+
 ## Catatan keamanan
 
 - Data berisi informasi intelijen: jalankan Data IK di server yang Anda kendalikan, isi `ACCESS_CODE`, dan pakai HTTPS bila diakses dari luar jaringan.

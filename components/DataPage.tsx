@@ -379,7 +379,7 @@ function kolomBody(kind: Kind, it: Item) {
     const l = it as Lokasi;
     return (
       <>
-        <td><div className="t">{l.nama}</div>{l.alias.length > 0 && <div className="alias">{l.alias.join(", ")}</div>}</td>
+        <td><div className="t">{l.nama}{l.terverifikasi && <span className="badge ok-badge" title="Sudah dibenarkan pengguna; dipakai sebagai acuan"> ✓ terverifikasi</span>}</div>{l.alternatif?.length ? <div className="alias"><a href="/koreksi" onClick={(e) => e.stopPropagation()}>⚠ {l.alternatif.length} alamat lain menunggu dipilih</a></div> : null}{l.alias.length > 0 && <div className="alias">{l.alias.join(", ")}</div>}</td>
         <td><span className="badge">{l.kategori}</span></td>
         <td>{l.alamat || <span className="muted">— belum ada alamat</span>}{l.alamat_ai && <div><span className="badge warn">AI · perlu verifikasi</span></div>}{l.kelurahan && !l.alamat ? <div className="alias">Kel. {l.kelurahan}</div> : null}</td>
         <td className="small muted" style={{ whiteSpace: "nowrap" }}>{tgl(l.terakhir)}<br />{l.sebutan}× disebut</td>
@@ -391,7 +391,7 @@ function kolomBody(kind: Kind, it: Item) {
     const rtrw = [o.rt && `RT ${o.rt}`, o.rw && `RW ${o.rw}`].filter(Boolean).join(" / ");
     return (
       <>
-        <td><div className="t">{o.nama}</div></td>
+        <td><div className="t">{o.nama}{o.terverifikasi && <span className="badge ok-badge" title="Sudah dibenarkan pengguna; dipakai sebagai acuan"> ✓ terverifikasi</span>}</div>{o.varian?.length ? <div className="alias">Juga: {o.varian.join("; ")}</div> : null}</td>
         <td><span className="badge">{labelOrang(o.kategori)}</span>{o.tingkat && <div className="alias">{labelTingkat(o.tingkat)}</div>}</td>
         <td>{o.jabatan}</td>
         <td className="small">{[...new Set([rtrw, o.wilayah, o.instansi].filter(Boolean))].join(" · ")}</td>
@@ -416,6 +416,15 @@ function Teks({ label, v, set, area, tipe }: { label: string; v: unknown; set: (
       <label>{label}</label>
       {area ? <textarea rows={3} value={String(v ?? "")} onChange={(e) => set(e.target.value)} /> : <input type={tipe ?? "text"} value={String(v ?? "")} onChange={(e) => set(e.target.value)} />}
     </div>
+  );
+}
+
+function Verif({ v, set }: { v: boolean; set: (b: boolean) => void }) {
+  return (
+    <label className="small" style={{ display: "flex", gap: 8, alignItems: "center", margin: "4px 0 8px" }}>
+      <input type="checkbox" checked={v} onChange={(e) => set(e.target.checked)} />
+      Terverifikasi — sudah benar, dipakai sebagai acuan di aplikasi lain
+    </label>
   );
 }
 
@@ -468,6 +477,7 @@ function Form({ kind, awal, onClose, onSimpan, onHapus }: { kind: Kind; awal: Pa
             )}
             <Teks label="Nama lain / singkatan (pisahkan koma)" v={d.alias} set={f("alias")} />
             <Teks label="Keterangan" v={d.keterangan} set={f("keterangan")} area />
+            <Verif v={!!d.terverifikasi} set={(b) => setD((p) => ({ ...p, terverifikasi: b }))} />
           </>
         )}
         {kind === "orang" && (
@@ -481,6 +491,7 @@ function Form({ kind, awal, onClose, onSimpan, onHapus }: { kind: Kind; awal: Pa
             <div className="row field"><Teks label="Instansi / organisasi" v={d.instansi} set={f("instansi")} /><Teks label="Wilayah / kelurahan" v={d.wilayah} set={f("wilayah")} /></div>
             {d.kategori === "rt-rw" && <div className="row field"><Teks label="RT" v={d.rt} set={f("rt")} /><Teks label="RW" v={d.rw} set={f("rw")} /></div>}
             <Teks label="Keterangan" v={d.keterangan} set={f("keterangan")} area />
+            <Verif v={!!d.terverifikasi} set={(b) => setD((p) => ({ ...p, terverifikasi: b }))} />
           </>
         )}
         {kind === "personil" && (

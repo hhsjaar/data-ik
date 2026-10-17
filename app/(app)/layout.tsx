@@ -1,5 +1,6 @@
 import Nav, { KeluarButton } from "@/components/Nav";
 import { aksesDiwajibkan } from "@/lib/auth";
+import { deteksiKonflik } from "@/lib/konflik";
 import { loadReports } from "@/lib/reports";
 import { readDb } from "@/lib/store";
 import { JENIS_LAPORAN } from "@/lib/types";
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/kejadian", label: "Kejadian Menonjol", n: db.kejadian.length },
     { href: "/personil", label: "Data Personil Tembalang", n: db.personil.length },
     { href: "/catatan", label: "Catatan WhatsApp", n: db.catatan.length },
+    { href: "/koreksi", label: "Perlu Dipilih", n: deteksiKonflik(db).length },
   ];
   const jenis = [
     {

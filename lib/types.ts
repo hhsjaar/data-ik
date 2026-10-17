@@ -99,6 +99,9 @@ type Dasar = {
   diubah: string;
 };
 
+/** Alamat lain yang disebut untuk tempat yang sama dan belum diputuskan benar/salahnya. */
+export type AlamatAlt = { alamat: string; sumber: string[]; dari: "laporan" | "catatan" | "ai" };
+
 export type Lokasi = Dasar & {
   nama: string;
   alias: string[];
@@ -108,6 +111,12 @@ export type Lokasi = Dasar & {
   alamat_ai?: boolean;
   /** sudah pernah dicoba dilengkapi AI (agar tidak diulang terus) */
   alamat_dicek?: boolean;
+  /** true bila pengguna sudah memilih/membenarkan: menjadi acuan di aplikasi lain */
+  terverifikasi?: boolean;
+  /** alamat bersaing yang menunggu keputusan pengguna */
+  alternatif?: AlamatAlt[];
+  /** kunci alamat yang sudah ditolak pengguna (jangan diajukan lagi) */
+  ditolak?: string[];
   kelurahan: string;
   keterangan: string;
   /** tanggal laporan terbaru yang menyebut tempat ini */
@@ -117,6 +126,12 @@ export type Lokasi = Dasar & {
 
 export type Orang = Dasar & {
   nama: string;
+  /** true bila pengguna sudah membenarkan: menjadi acuan di aplikasi lain */
+  terverifikasi?: boolean;
+  /** penulisan nama lain untuk orang yang sama (hasil penggabungan) */
+  varian?: string[];
+  /** id orang lain yang sudah dipastikan BUKAN orang/jabatan yang sama (jangan ditanyakan lagi) */
+  bukanSama?: string[];
   kategori: KategoriOrang;
   tingkat: TingkatPejabat | "";
   jabatan: string;

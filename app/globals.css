@@ -145,3 +145,4 @@ td .alias { color: var(--muted); font-size: 0.84rem; }
 .note { border-left: 3px solid var(--brand); padding: 8px 12px; background: var(--brand-soft); border-radius: 6px; margin-bottom: 10px; }
 .note.bad { border-color: var(--danger); }
 .badge.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); font-weight: 600; }
+.badge.ok-badge { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); margin-left: 6px; font-size: 0.72rem; }

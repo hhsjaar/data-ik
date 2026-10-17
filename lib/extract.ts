@@ -1,4 +1,5 @@
 import { generateJson } from "./gemini";
+import { alamatSama, catatAlternatif } from "./konflik";
 import { jaccard, kunciKurung, namaCocok, namaKey, rapi, tempatKey, tempatSama, tokens } from "./normalize";
 import { newId, now } from "./store";
 import {
@@ -161,6 +162,10 @@ export function cabutSumber(db: DbShape, sumberId: string, hapusManual = false) 
   db.lokasi = bersihkan(db.lokasi);
   db.orang = bersihkan(db.orang);
   db.kejadian = bersihkan(db.kejadian);
+  for (const l of db.lokasi) {
+    if (!l.alternatif) continue;
+    l.alternatif = l.alternatif.map((a) => ({ ...a, sumber: a.sumber.filter((x) => x !== sumberId) })).filter((a) => a.sumber.length > 0);
+  }
 }
 
 const tgl = (iso: string) => iso.slice(0, 10);
@@ -188,7 +193,12 @@ export function terapkan(db: DbShape, h: HasilEkstraksi, k: Konteks) {
         ada.alamat = alamat;
         delete ada.alamat_ai;
       }
-      else if (alamat && ada.alamat && alamat.length > ada.alamat.length + 15 && !ada.manual) ada.alamat = alamat;
+      else if (alamat && ada.alamat && alamatSama(ada.alamat, alamat)) {
+        if (alamat.length > ada.alamat.length + 15 && !ada.manual) ada.alamat = alamat;
+      } else if (alamat && ada.alamat) {
+        // Alamat berbeda untuk tempat yang sama: jangan diam-diam memilih, simpan sebagai pilihan untuk diputuskan pengguna.
+        catatAlternatif(ada, alamat, [k.sumberId], k.asal === "laporan" ? "laporan" : "catatan");
+      }
       if (!ada.kelurahan) ada.kelurahan = rapi(r.kelurahan, 80);
       if (ada.kategori === "Lainnya") ada.kategori = oneOf(r.kategori, KATEGORI_LOKASI, "Lainnya");
       for (const a of alias) if (!ada.alias.some((x) => tempatKey(x) === tempatKey(a)) && tempatKey(a) !== tempatKey(ada.nama)) ada.alias.push(a);
@@ -214,12 +224,12 @@ export function terapkan(db: DbShape, h: HasilEkstraksi, k: Konteks) {
 
   // Orang
   for (const r of h.orang ?? []) {
-    const nama = rapi(r.nama, 160);
+    const nama = rapi(r.nama, 160).replace(/^(sdr|sdri|bapak|bpk|ibu|saudara|saudari)\.?\s+/i, "");
     const key = namaKey(nama);
     if (key.length < 3 || !rapi(r.jabatan) || PERAN_DITOLAK.test(r.jabatan)) continue;
     const kategori = oneOf(r.kategori, KATEGORI_ORANG.map((c) => c.key), "tokoh-masyarakat");
     const tingkat = kategori === "pejabat" ? oneOf(r.tingkat, TINGKAT_PEJABAT.map((t) => t.key), "lainnya") : "";
-    const ada = db.orang.find((o) => namaCocok(namaKey(o.nama), key));
+    const ada = db.orang.find((o) => [o.nama, ...(o.varian ?? [])].some((n) => namaCocok(namaKey(n), key)));
     if (ada) {
       if (!ada.sumber.includes(k.sumberId)) {
         ada.sumber.push(k.sumberId);
@@ -318,6 +328,7 @@ export function rapikan(db: DbShape) {
   let orang = 0;
   const sebelum = db.orang.length;
   db.orang = db.orang.filter((o) => o.manual || !PERAN_DITOLAK.test(o.jabatan));
+  for (const o of db.orang) if (!o.manual) o.nama = o.nama.replace(/^(sdr|sdri|bapak|bpk|ibu|saudara|saudari)\.?\s+/i, "");
   const dibuang = sebelum - db.orang.length;
 
   const L: Lokasi[] = [];
@@ -334,7 +345,11 @@ export function rapikan(db: DbShape) {
       menang.alamat = kalah.alamat;
       if (kalah.alamat_ai) menang.alamat_ai = true;
       else delete menang.alamat_ai;
+    } else if (kalah.alamat && !kalah.alamat_ai) {
+      catatAlternatif(menang, kalah.alamat, kalah.sumber, "laporan");
     }
+    for (const x of kalah.alternatif ?? []) catatAlternatif(menang, x.alamat, x.sumber, x.dari);
+    if (kalah.terverifikasi) menang.terverifikasi = true;
     if (!menang.kelurahan) menang.kelurahan = kalah.kelurahan;
     if (menang.kategori === "Lainnya") menang.kategori = kalah.kategori;
     for (const a of [kalah.nama, ...kalah.alias]) if (tempatKey(a) !== tempatKey(menang.nama) && !menang.alias.some((x) => tempatKey(x) === tempatKey(a))) menang.alias.push(a);
@@ -353,7 +368,7 @@ export function rapikan(db: DbShape) {
   const O: Orang[] = [];
   for (const o of db.orang) {
     const key = namaKey(o.nama);
-    const dup = O.find((x) => namaCocok(namaKey(x.nama), key));
+    const dup = O.find((x) => !x.bukanSama?.includes(o.id) && !o.bukanSama?.includes(x.id) && [x.nama, ...(x.varian ?? [])].some((n) => namaCocok(namaKey(n), key)));
     if (!dup) {
       O.push(o);
       continue;
@@ -371,6 +386,8 @@ export function rapikan(db: DbShape) {
     menang.wilayah ||= kalah.wilayah;
     menang.rt ||= kalah.rt;
     menang.rw ||= kalah.rw;
+    if (kalah.terverifikasi) menang.terverifikasi = true;
+    menang.varian = [...new Set([...(menang.varian ?? []), ...(kalah.varian ?? [])])];
     if (kalah.nama.length > menang.nama.length && !menang.manual) menang.nama = kalah.nama;
     menang.diubah = now();
     O[O.indexOf(dup)] = menang;
