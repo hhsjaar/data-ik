@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { COOKIE, aksesDiwajibkan, tokenAkses } from "@/lib/auth";
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  // Aset PWA (manifest, ikon, service worker, halaman offline) harus bisa diambil tanpa login; semuanya tidak berisi data.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|icon.png|apple-icon.png|manifest.webmanifest|sw.js|icons/|offline).*)"],
 };
 
 export async function proxy(req: NextRequest) {

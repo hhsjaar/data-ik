@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PwaClient from "@/components/PwaClient";
 
 export default function Login() {
   const [kode, setKode] = useState("");
@@ -36,6 +37,7 @@ export default function Login() {
         <button className="btn primary" disabled={busy || !kode} style={{ width: "100%" }}>
           Masuk
         </button>
+        <div style={{ marginTop: 10 }}><PwaClient kelas="btn" /></div>
       </form>
     </div>
   );

@@ -1,4 +1,5 @@
 import Nav, { KeluarButton } from "@/components/Nav";
+import PwaClient from "@/components/PwaClient";
 import { aksesDiwajibkan } from "@/lib/auth";
 import { deteksiKonflik } from "@/lib/konflik";
 import { loadReports } from "@/lib/reports";
@@ -46,6 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
             <Nav utama={utama} jenis={jenis} />
             <div className="spacer" />
+            <PwaClient />
             {aksesDiwajibkan() && <KeluarButton />}
           </aside>
           <main className="main">{children}</main>
